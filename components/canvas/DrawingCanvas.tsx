@@ -76,6 +76,8 @@ interface DrawingCanvasProps {
   onStickyNoteDeleteAction?: (stickyNoteId: string) => void;
   onStickyNoteSelectAction?: (stickyNoteId: string) => void;
   onCanvasClickAction?: (e: KonvaEventObject<MouseEvent>) => void;
+  onStickyNoteDragStartAction?: () => void;
+  onStickyNoteDragEndAction?: () => void;
   cursors: Record<string, Cursor>;
   moveCursorAction: (x: number, y: number) => void;
   onRealTimeDrawingAction?: (line: ILine) => void;
@@ -151,6 +153,8 @@ export default function DrawingCanvas({
   onStickyNoteDeleteAction,
   onStickyNoteSelectAction,
   onCanvasClickAction,
+  onStickyNoteDragStartAction,
+  onStickyNoteDragEndAction,
   cursors,
   moveCursorAction,
   onRealTimeDrawingAction,
@@ -173,7 +177,18 @@ export default function DrawingCanvas({
   const performanceMode = useRef(false);
   const isSpacePressed = useRef(false);
   const isPanning = useRef(false);
+  const isDragInProgress = useRef(false);
+  const dragCooldownTimeout = useRef<NodeJS.Timeout | null>(null);
   
+  // Cleanup drag cooldown timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (dragCooldownTimeout.current) {
+        clearTimeout(dragCooldownTimeout.current);
+      }
+    };
+  }, []);
+
   // Enhanced line rendering with improved visual quality
   const handleLineClick = useCallback(
     (lineIdx: number) => {
@@ -452,8 +467,9 @@ export default function DrawingCanvas({
     const isBackgroundClick = targetName === 'Stage' || targetName === 'Layer';
     
     // For sticky note tool: only trigger canvas click on background, not on existing sticky notes
+    // Also prevent clicks immediately after drag operations to avoid unwanted note creation
     if (tool === 'sticky-note') {
-      if (isBackgroundClick && onCanvasClickAction) {
+      if (isBackgroundClick && !isDragInProgress.current && onCanvasClickAction) {
         onCanvasClickAction(e);
       }
       // Always return early for sticky note tool to prevent drawing
@@ -767,6 +783,25 @@ export default function DrawingCanvas({
               }}
               onDeleteAction={onStickyNoteDeleteAction || (() => {})}
               isDraggable={tool === 'select' || tool === 'sticky-note'}
+              onDragStartAction={() => {
+                isDragInProgress.current = true;
+                if (onStickyNoteDragStartAction) {
+                  onStickyNoteDragStartAction();
+                }
+              }}
+              onDragEndAction={() => {
+                // Set a cooldown period after drag ends to prevent immediate canvas clicks
+                if (dragCooldownTimeout.current) {
+                  clearTimeout(dragCooldownTimeout.current);
+                }
+                dragCooldownTimeout.current = setTimeout(() => {
+                  isDragInProgress.current = false;
+                }, 150); // 150ms cooldown to prevent accidental clicks after drag
+                
+                if (onStickyNoteDragEndAction) {
+                  onStickyNoteDragEndAction();
+                }
+              }}
             />
           ))}
         </Layer>

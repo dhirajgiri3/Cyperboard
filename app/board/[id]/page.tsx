@@ -253,6 +253,7 @@ function BoardPageContent() {
   const [selectedStickyNote, setSelectedStickyNote] = useState<string | null>(null);
   const [history, setHistory] = useState<unknown[]>([]); // BoardAction[]
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [isDragInProgress, setIsDragInProgress] = useState(false);
   
   // Sticky Note Color Picker State
   const colorPicker = useStickyNoteColorPicker();
@@ -568,6 +569,17 @@ function BoardPageContent() {
     }
   }, [boardId, addBoardAction, updateBoardTimestamp]);
 
+  const handleStickyNoteDragStart = useCallback(() => {
+    setIsDragInProgress(true);
+  }, []);
+
+  const handleStickyNoteDragEnd = useCallback(() => {
+    // Add a small delay to prevent immediate clicks after drag
+    setTimeout(() => {
+      setIsDragInProgress(false);
+    }, 150);
+  }, []);
+
   const handleStickyNoteSelect = useCallback((stickyNoteId: string) => {
     // When clicking on a sticky note, select it if not already selected
     // or deselect it if it's already selected (toggle behavior)
@@ -584,7 +596,8 @@ function BoardPageContent() {
     const isBackgroundClick = targetName === 'Stage' || targetName === 'Layer';
     
     // Only proceed if it's a background click (not on sticky note or other elements)
-    if (!isBackgroundClick) {
+    // Also prevent creating notes if drag is in progress
+    if (!isBackgroundClick || isDragInProgress) {
       return;
     }
     
@@ -620,7 +633,7 @@ function BoardPageContent() {
       // Deselect sticky note when clicking on background (not on sticky notes)
       setSelectedStickyNote(null);
     }
-  }, [tool, boardId, session?.user?.id, handleStickyNoteAdd, currentStickyNoteColor]);
+  }, [tool, boardId, session?.user?.id, handleStickyNoteAdd, currentStickyNoteColor, isDragInProgress]);
 
   const handleUndo = useCallback(async () => {
     logger.debug('Undo action triggered');
@@ -1255,6 +1268,8 @@ function BoardPageContent() {
               onStickyNoteDeleteAction={handleStickyNoteDelete}
               onStickyNoteSelectAction={handleStickyNoteSelect}
               onCanvasClickAction={handleCanvasClick}
+              onStickyNoteDragStartAction={handleStickyNoteDragStart}
+              onStickyNoteDragEndAction={handleStickyNoteDragEnd}
               cursors={realTimeCursors}
               moveCursorAction={broadcastCursorMovement}
               onRealTimeDrawingAction={(line: ILine) => {

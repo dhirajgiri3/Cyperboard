@@ -19,6 +19,8 @@ export interface StickyNoteProps {
   onTextChangeAction: (id: string, text: string) => void;
   onPositionChangeAction: (id: string, x: number, y: number) => void;
   onDeleteAction: (id: string) => void;
+  onDragStartAction?: () => void;
+  onDragEndAction?: () => void;
   isDraggable?: boolean;
 }
 
@@ -36,6 +38,8 @@ export default function StickyNote({
   onTextChangeAction,
   onPositionChangeAction,
   onDeleteAction,
+  onDragStartAction,
+  onDragEndAction,
   isDraggable = true,
 }: StickyNoteProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -45,6 +49,17 @@ export default function StickyNote({
   const [animationPhase, setAnimationPhase] = useState(0);
   const groupRef = useRef<Konva.Group>(null);
   const animationRef = useRef<Konva.Animation | null>(null);
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const preventSingleClick = useRef(false);
+
+  // Cleanup click timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setEditText(text);
@@ -80,15 +95,31 @@ export default function StickyNote({
     e.cancelBubble = true; // Prevent event bubbling to canvas
     e.evt.stopPropagation(); // Additional prevention of event propagation
     
-    // Only handle click if not editing
-    if (!isEditing) {
-      onSelectAction(id);
+    // Only handle click if not editing and not preventing due to double-click
+    if (!isEditing && !preventSingleClick.current) {
+      // Add a small delay to check if this is part of a double-click
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
+      }
+      
+      clickTimeoutRef.current = setTimeout(() => {
+        if (!preventSingleClick.current) {
+          onSelectAction(id);
+        }
+        preventSingleClick.current = false;
+      }, 250); // 250ms delay to distinguish from double-click
     }
   };
 
   const handleDoubleClick = (e: KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true; // Prevent event bubbling to canvas
     e.evt.stopPropagation(); // Additional prevention of event propagation
+    
+    // Prevent the single click from firing
+    preventSingleClick.current = true;
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+    }
     
     // Only start editing if we're not already editing
     if (isEditing) return;
@@ -250,11 +281,19 @@ export default function StickyNote({
     if (!isSelected) {
       onSelectAction(id);
     }
+    // Notify parent component about drag start
+    if (onDragStartAction) {
+      onDragStartAction();
+    }
   };
 
   const handleDragEnd = (e: KonvaEventObject<DragEvent>) => {
     setIsDragging(false);
     onPositionChangeAction(id, e.target.x(), e.target.y());
+    // Notify parent component about drag end
+    if (onDragEndAction) {
+      onDragEndAction();
+    }
   };
 
   // Enhanced color utilities
